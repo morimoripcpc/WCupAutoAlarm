@@ -1,0 +1,46 @@
+name: W杯配信Bot
+
+on:
+  schedule:
+    # 06:00 UTC = 15:00 JST に毎日実行（GitHub側の混雑で数分〜十数分ずれることあり）
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}   # 手動実行ボタン（テスト用）
+
+permissions:
+  contents: write          # sent_matches.json をコミットして二重送信を防ぐため
+
+concurrency:
+  group: wc-bot
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run bot
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_GROUP_ID: ${{ secrets.LINE_GROUP_ID }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 未設定ならテンプレ整形で動作
+        run: python wc_bot.py
+
+      - name: Persist sent-state
+        run: |
+          if [[ -n "$(git status --porcelain sent_matches.json)" ]]; then
+            git config user.name "wc-bot"
+            git config user.email "wc-bot@users.noreply.github.com"
+            git add sent_matches.json
+            git commit -m "chore: update sent matches [skip ci]"
+            git push
+          else
+            echo "状態ファイルに変更なし"
+          fi
